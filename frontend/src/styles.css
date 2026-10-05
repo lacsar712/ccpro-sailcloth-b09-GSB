@@ -141,6 +141,11 @@ input, select, textarea {
   background: #fffdf8;
   min-width: 140px;
 }
+input:disabled, select:disabled {
+  background: var(--canvas-deep);
+  color: var(--muted);
+  cursor: not-allowed;
+}
 button.btn {
   background: var(--navy);
   color: var(--canvas);
@@ -387,20 +392,25 @@ th { background: var(--canvas-deep); color: var(--navy); }
   gap: 8px;
 }
 .drawer-form,
-.drawer-history {
+.drawer-history,
+.drawer-weight {
   display: grid;
   gap: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
 .drawer-form h3,
-.drawer-history h3 {
+.drawer-history h3,
+.drawer-weight h3 {
   margin: 0;
   font-size: 1rem;
   color: var(--navy-mid);
 }
-.drawer-form label { min-width: 0; }
-.drawer-form input { min-width: 0; width: 100%; }
+.drawer-form label,
+.drawer-weight label { min-width: 0; }
+.drawer-form input,
+.drawer-weight input { min-width: 0; width: 100%; }
+.drawer-weight button { justify-self: start; }
 
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; }

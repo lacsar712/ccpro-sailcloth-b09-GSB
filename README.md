@@ -31,6 +31,14 @@
 
 布卷状态不可设为「已固化」（`cured`），除非该卷**最近一条** `DipRun` 的 `cureHours` 已记录且 **≥ 12**。
 
+**克重写入分界**（`fabric_weight_gsm`，出厂默认 380）：
+
+- **操作工**：克重仍为出厂默认 380 时，只能写下第一个非 380 的实测值；已经不是 380 的克重不能再改。
+- **管理员**：可改任意**未固化**卷的克重。
+- **已固化卷**：全员不得改克重。
+- 每次克重落库写一条 `WeightAuditLog`（谁、何时、旧值→新值、写入入口 panel/ledger），并将布卷 `version` +1；改克重必须携带 `expectedVersion`，两名管理员交叉改同一卷时后到者收 **409**，只留一版。
+- 上述为后端强制规则（`backend/core/rules.py`、`core/serializers.py`），前端输入框的禁用只是界面镜像。
+
 规则实现：`backend/core/rules.py`
 
 ## 快速启动
@@ -45,10 +53,13 @@ docker compose up --build
 ## SPA 信息架构
 
 - **登录** → 进入主工作面
-- **`/` 帆布间晾晒架（主）**：按帆布间挂布卷芯片（挂签状态 `raw` / `dipping` / `cured`）；点击打开右侧面板登记 `DipRun`、切换固化状态；架下为浸渍流水次要信息流
-- **`/rolls` · `/dips`（次要台账）**：保留列表/表单 CRUD，侧栏降级为「台账」入口，非主路径
+- **`/` 帆布间晾晒架（主）**：按帆布间挂布卷芯片（挂签状态 `raw` / `dipping` / `cured`）；点击打开右侧面板登记 `DipRun`、切换固化状态、在权限范围内改写克重；架下为浸渍流水次要信息流
+- **`/weight-audit` 克重审计（顶栏）**：只读专页，按时间倒序展示每次克重改写（时间、帆布间、卷号、旧值→新值、操作人、写入入口），可按布卷筛选
+- **`/rolls` · `/dips`（次要台账）**：保留列表/表单 CRUD，侧栏降级为「台账」入口，非主路径；台账页克重输入同样遵守写入分界
 
-API 契约不变（JWT、`/api/lofts|rolls|dips|dashboard/`）。
+完整顶栏含「晾晒架」与「克重审计」。
+
+API：JWT，`/api/lofts|rolls|dips|weight-logs|dashboard/`；`weight-logs` 只读。改克重的 PATCH `/api/rolls/{id}/` 须带 `expectedVersion` 与 `source`（`panel` / `ledger`）。
 
 ## 配色
 

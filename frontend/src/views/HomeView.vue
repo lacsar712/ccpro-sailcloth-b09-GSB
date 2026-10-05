@@ -1,6 +1,10 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
+
+const auth = useAuthStore()
+const isAdmin = computed(() => auth.user?.role === 'admin')
 
 const lofts = ref([])
 const rolls = ref([])
@@ -9,6 +13,9 @@ const error = ref('')
 const panelError = ref('')
 const selectedId = ref(null)
 const panelBusy = ref(false)
+const weightDraft = ref(null)
+const weightSaving = ref(false)
+const weightMsg = ref('')
 
 const statusLabel = { raw: '原布', dipping: '浸渍中', cured: '已固化' }
 
@@ -26,6 +33,70 @@ function localNow() {
 }
 
 const selected = computed(() => rolls.value.find((r) => r.id === selectedId.value) || null)
+
+// 克重写入分界的界面镜像（后端仍会强制校验）：
+// 已固化全员锁定；工人只能在仍是 380 时首写；管理员可改任意未固化卷。
+const weightLocked = computed(() => {
+  const r = selected.value
+  if (!r) return true
+  if (r.status === 'cured') return true
+  if (!isAdmin.value && r.fabricWeightGsm !== 380) return true
+  return false
+})
+const weightLockHint = computed(() => {
+  const r = selected.value
+  if (!r) return ''
+  if (r.status === 'cured') return '已固化卷克重已锁定，任何人不得修改'
+  if (!isAdmin.value && r.fabricWeightGsm !== 380)
+    return '操作工只能首写出厂默认 380；克重已改写，更正请联系管理员'
+  if (!isAdmin.value) return '首写实测克重后不可再由操作工修改'
+  return '管理员可修改未固化卷克重，修改会记入克重审计'
+})
+const weightDirty = computed(() => {
+  const v = Number(weightDraft.value)
+  return (
+    Number.isFinite(v) &&
+    v > 0 &&
+    selected.value &&
+    v !== selected.value.fabricWeightGsm
+  )
+})
+
+watch(selected, (r) => {
+  weightDraft.value = r ? r.fabricWeightGsm : null
+})
+
+async function saveWeight() {
+  const r = selected.value
+  if (!r || weightLocked.value || !weightDirty.value) return
+  panelError.value = ''
+  weightMsg.value = ''
+  weightSaving.value = true
+  try {
+    await api.patch(`/rolls/${r.id}/`, {
+      fabricWeightGsm: Number(weightDraft.value),
+      expectedVersion: r.version,
+      source: 'panel',
+    })
+    await load()
+    weightMsg.value = '克重已写入并记入审计'
+  } catch (e) {
+    const data = e.response?.data
+    panelError.value =
+      data?.detail ||
+      data?.fabricWeightGsm?.[0] ||
+      data?.expectedVersion?.[0] ||
+      '克重写入失败'
+    if (e.response?.status === 409) {
+      // 已被他人先改：拉取最新克重与版本号，旧提交作废
+      await load()
+    } else {
+      weightDraft.value = r.fabricWeightGsm
+    }
+  } finally {
+    weightSaving.value = false
+  }
+}
 
 const rollsByLoft = computed(() => {
   return lofts.value.map((loft) => ({
@@ -60,6 +131,8 @@ async function load() {
 function openRoll(roll) {
   selectedId.value = roll.id
   panelError.value = ''
+  weightMsg.value = ''
+  weightDraft.value = roll.fabricWeightGsm
   dipForm.startedAt = localNow()
   dipForm.resinPct = 28
   dipForm.cureHours = ''
@@ -208,10 +281,31 @@ onMounted(load)
         <span class="hang-tag" :class="'tag-' + selected.status">
           {{ statusLabel[selected.status] }}
         </span>
-        <span class="hint">{{ selected.fabricWeightGsm }} gsm</span>
+        <span class="hint">{{ selected.fabricWeightGsm }} gsm · v{{ selected.version }}</span>
       </div>
       <p v-if="selected.notes" class="hint">{{ selected.notes }}</p>
       <p v-if="panelError" class="error">{{ panelError }}</p>
+
+      <form class="drawer-weight" @submit.prevent="saveWeight">
+        <h3>克重 gsm</h3>
+        <label>实测克重
+          <input
+            v-model.number="weightDraft"
+            type="number"
+            :disabled="weightLocked || weightSaving"
+            :title="weightLockHint"
+          />
+        </label>
+        <p class="hint">{{ weightLockHint }}</p>
+        <button
+          class="btn secondary"
+          type="submit"
+          :disabled="weightLocked || weightSaving || !weightDirty"
+        >
+          写入克重
+        </button>
+        <p v-if="weightMsg" class="ok">{{ weightMsg }}</p>
+      </form>
 
       <div class="drawer-actions">
         <button

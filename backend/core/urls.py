@@ -1,12 +1,19 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import ClothRollViewSet, DipRunViewSet, LoftViewSet, dashboard_stats
+from .views import (
+    ClothRollViewSet,
+    DipRunViewSet,
+    LoftViewSet,
+    WeightAuditLogViewSet,
+    dashboard_stats,
+)
 
 router = DefaultRouter()
 router.register("lofts", LoftViewSet, basename="loft")
 router.register("rolls", ClothRollViewSet, basename="roll")
 router.register("dips", DipRunViewSet, basename="dip")
+router.register("weight-logs", WeightAuditLogViewSet, basename="weight-log")
 
 urlpatterns = [
     path("dashboard/", dashboard_stats, name="dashboard"),

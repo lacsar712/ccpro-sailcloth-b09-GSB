@@ -1,11 +1,16 @@
 from django.db.models import Count
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import ClothRoll, DipRun, Loft
-from .serializers import ClothRollSerializer, DipRunSerializer, LoftSerializer
+from .models import ClothRoll, DipRun, Loft, WeightAuditLog
+from .serializers import (
+    ClothRollSerializer,
+    DipRunSerializer,
+    LoftSerializer,
+    WeightAuditLogSerializer,
+)
 
 
 class LoftViewSet(viewsets.ModelViewSet):
@@ -24,6 +29,21 @@ class ClothRollViewSet(viewsets.ModelViewSet):
             qs = qs.filter(loft_id=loft_id)
         if status:
             qs = qs.filter(status=status)
+        return qs
+
+
+class WeightAuditLogViewSet(
+    mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
+    """克重审计专页数据源：全员可查，只读；任何写入都只能经布卷接口产生。"""
+
+    serializer_class = WeightAuditLogSerializer
+
+    def get_queryset(self):
+        qs = WeightAuditLog.objects.select_related("roll", "roll__loft").all()
+        roll_id = self.request.query_params.get("rollId")
+        if roll_id:
+            qs = qs.filter(roll_id=roll_id)
         return qs
 
 
