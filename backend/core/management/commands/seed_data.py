@@ -30,6 +30,20 @@ class Command(BaseCommand):
         admin.save()
         self.stdout.write(self.style.SUCCESS(f"admin {'created' if created else 'updated'}"))
 
+        admin2, created = User.objects.get_or_create(
+            username="admin2",
+            defaults={
+                "email": "admin2@sailcloth.local",
+                "role": User.ROLE_ADMIN,
+                "is_staff": True,
+            },
+        )
+        admin2.set_password("123456")
+        admin2.role = User.ROLE_ADMIN
+        admin2.is_staff = True
+        admin2.save()
+        self.stdout.write(self.style.SUCCESS(f"admin2 {'created' if created else 'updated'}"))
+
         worker, created = User.objects.get_or_create(
             username="worker",
             defaults={

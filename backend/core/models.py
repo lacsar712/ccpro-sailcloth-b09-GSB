@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -28,6 +29,8 @@ class ClothRoll(models.Model):
     roll_code = models.CharField(max_length=40)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_RAW)
     fabric_weight_gsm = models.PositiveIntegerField(default=380)
+    # 克重乐观锁版本：仅在克重实际被改写时自增。
+    version = models.PositiveIntegerField(default=0)
     notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -58,3 +61,29 @@ class DipRun(models.Model):
 
     def __str__(self):
         return f"Dip@{self.roll_id} {self.started_at}"
+
+
+class WeightAuditLog(models.Model):
+    """克重改写审计：谁在何时把克重从旧值改到新值。"""
+
+    roll = models.ForeignKey(
+        ClothRoll, on_delete=models.CASCADE, related_name="weight_audits"
+    )
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="weight_audits",
+    )
+    # 用户名快照：即使用户事后被删，审计行仍能看出是谁改的。
+    changed_by_name = models.CharField(max_length=150, blank=True, default="")
+    old_value = models.PositiveIntegerField()
+    new_value = models.PositiveIntegerField()
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at", "-id"]
+
+    def __str__(self):
+        return f"{self.roll}: {self.old_value}->{self.new_value} by {self.changed_by_name}"

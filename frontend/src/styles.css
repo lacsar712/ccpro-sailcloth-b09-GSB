@@ -406,3 +406,32 @@ th { background: var(--canvas-deep); color: var(--navy); }
   .layout { grid-template-columns: 1fr; }
   .content { padding: 18px 16px; }
 }
+
+.drawer-weight {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.drawer-weight h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--navy-mid);
+}
+.weight-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.weight-row label { flex: 1; min-width: 0; }
+.weight-row input { width: 100%; }
+.field-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+input:disabled {
+  background: var(--canvas-deep);
+  color: var(--muted);
+  cursor: not-allowed;
+}

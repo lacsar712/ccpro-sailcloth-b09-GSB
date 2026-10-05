@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
+
+const auth = useAuthStore()
+const isAdmin = computed(() => auth.user?.role === 'admin')
 
 const lofts = ref([])
 const rolls = ref([])
@@ -9,6 +13,8 @@ const error = ref('')
 const panelError = ref('')
 const selectedId = ref(null)
 const panelBusy = ref(false)
+const weightBusy = ref(false)
+const weightForm = reactive({ value: 380 })
 
 const statusLabel = { raw: '原布', dipping: '浸渍中', cured: '已固化' }
 
@@ -41,6 +47,26 @@ const selectedDips = computed(() => {
 
 const recentFeed = computed(() => dips.value.slice(0, 12))
 
+// 克重写入分界（前端只做可见性约束，真正的分界在后端）：
+// 已固化全员锁定；操作工只能把仍是 380 的克重首写为非 380；管理员可改任意未固化卷。
+const weightLocked = computed(() => {
+  const roll = selected.value
+  if (!roll) return true
+  if (roll.status === 'cured') return true
+  if (isAdmin.value) return false
+  return roll.fabricWeightGsm !== 380
+})
+
+const weightLockHint = computed(() => {
+  const roll = selected.value
+  if (!roll) return ''
+  if (roll.status === 'cured') return '该布卷已固化，克重全员不可修改'
+  if (!isAdmin.value && roll.fabricWeightGsm !== 380)
+    return '操作工只能写入首个非出厂克重；已标定克重须由管理员修改'
+  if (!isAdmin.value) return '首写：把出厂默认 380 改写为实际克重，提交后不可自行再改'
+  return '管理员可改写任意未固化卷的克重'
+})
+
 async function load() {
   error.value = ''
   try {
@@ -60,6 +86,7 @@ async function load() {
 function openRoll(roll) {
   selectedId.value = roll.id
   panelError.value = ''
+  weightForm.value = roll.fabricWeightGsm
   dipForm.startedAt = localNow()
   dipForm.resinPct = 28
   dipForm.cureHours = ''
@@ -86,6 +113,42 @@ async function setStatus(status) {
       '状态更新失败（标「已固化」需最近浸渍固化时长 ≥ 12 小时）'
   } finally {
     panelBusy.value = false
+  }
+}
+
+async function saveWeight() {
+  if (!selected.value) return
+  panelError.value = ''
+  const next = Number(weightForm.value)
+  if (!Number.isInteger(next) || next <= 0) {
+    panelError.value = '请输入正整数克重'
+    return
+  }
+  if (next === selected.value.fabricWeightGsm) {
+    panelError.value = '新克重与当前克重相同，无需修改'
+    return
+  }
+  weightBusy.value = true
+  try {
+    await api.patch(`/rolls/${selected.value.id}/`, {
+      fabricWeightGsm: next,
+      expectedVersion: selected.value.version ?? 0,
+    })
+    await load()
+    if (selected.value) weightForm.value = selected.value.fabricWeightGsm
+  } catch (e) {
+    panelError.value =
+      e.response?.data?.detail ||
+      e.response?.data?.fabricWeightGsm?.[0] ||
+      e.response?.data?.expectedVersion?.[0] ||
+      '克重修改失败'
+    // 403/409 都以服务器现状为准，刷新后让面板展示最新克重与版本
+    if (e.response?.status === 403 || e.response?.status === 409) {
+      await load()
+      if (selected.value) weightForm.value = selected.value.fabricWeightGsm
+    }
+  } finally {
+    weightBusy.value = false
   }
 }
 
@@ -208,10 +271,28 @@ onMounted(load)
         <span class="hang-tag" :class="'tag-' + selected.status">
           {{ statusLabel[selected.status] }}
         </span>
-        <span class="hint">{{ selected.fabricWeightGsm }} gsm</span>
+        <span class="hint">当前 {{ selected.fabricWeightGsm }} gsm · 版本 v{{ selected.version ?? 0 }}</span>
       </div>
       <p v-if="selected.notes" class="hint">{{ selected.notes }}</p>
       <p v-if="panelError" class="error">{{ panelError }}</p>
+
+      <form class="drawer-weight" @submit.prevent="saveWeight">
+        <h3>克重写入</h3>
+        <div class="weight-row">
+          <label>新克重 gsm
+            <input
+              v-model.number="weightForm.value"
+              type="number"
+              min="1"
+              :disabled="weightLocked || weightBusy"
+            />
+          </label>
+          <button class="btn" type="submit" :disabled="weightLocked || weightBusy">
+            {{ weightBusy ? '提交中…' : '写入克重' }}
+          </button>
+        </div>
+        <p class="hint field-hint">{{ weightLockHint }}</p>
+      </form>
 
       <div class="drawer-actions">
         <button
